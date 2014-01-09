@@ -42,15 +42,8 @@ define(['durandal/app', 'knockout', 'jquery'], function (app, ko, $) {
 		pageSize: 10,
 		pageSizeOptions: [25, 50, 75, 100],
 		alwaysShowPaging: false,
-		showPageSizeOptions: false,
-		pagingLimit: 5
+		showPageSizeOptions: false
 	};
-
-	/*
-		This widget can only be bound on a <Table> element in the DOM
-		Overridding it's parts can only be done if the un-"processed" <Table> would have legal HTML structure
-		Otherwise it will not render correctly in IE
-	*/
 
 	var Grid = function(config) {
 		var self = this,
@@ -175,67 +168,81 @@ define(['durandal/app', 'knockout', 'jquery'], function (app, ko, $) {
 		
 		self.currentPageRows = ko.computed({
 			read: function () {
-				var pageSize = self.pageSize(),
-					pageStartIndex = self.pageIndex() * self.pageSize(),
+				var pageStartIndex = self.pageIndex() * self.pageSize(),
 					sortedRows = self.sortedRows();
 				if (self.pageIndex() == self.lastPageIndex())
 					return sortedRows.slice(pageStartIndex);
 				else
-					return sortedRows.slice(pageStartIndex, pageStartIndex + pageSize - 1);
+					return sortedRows.slice(pageStartIndex, pageStartIndex + self.pageSize());
 			},
 			deferEvaluation: true
 		});
 
-		//Max number of page buttons
-		var pagingLimit = ko.isObservable(config.pagingLimit)
-			? config.pagingLimit
-			: ko.observable(config.pagingLimit || defaults.pagingLimit);
+		//This is a safety check. if the page size puts the current pageIndex out of bounds, go to the last page
+		//This can hapen when the page size grows
+		self.lastPageIndex.subscribe(function(newValue) {
+			if (self.pageIndex() > self.lastPageIndex())
+				self.pageIndex(self.lastPageIndex());
+		});
 
-		//The buttons for paginiation
-		//Will be buttons for up to pagingLimit pages, with a selected page
-		//Selected page will be in the middle, when possible
-		self.pageButtons = ko.computed(function() {
-			var current = toNumber(self.pageIndex()),
-				last = toNumber(self.lastPageIndex()),
-				top = last,
-				bottom = 0;
-			
-			if (current === 0) {
-				//Get current to either the last page, or pagingLimit from current
-				top = Math.min(pagingLimit - 1, last);
-			} else if (current === last) {
-				//Get from either the first page, or pagingLimit less than current, to current
-				bottom = Math.max(0, current - pagingLimit + 1);
-			} else {
-				//If it fits, we want pagingLimit buttons with current in the middle
-				//If it won't fit, we want the smaller of the pagingLimit or the total number of pages
-				//Because we don't want the number of buttons to shrink in the latter case
-				var padding = Math.floor(pagingLimit / 2);
-				
-				bottom = Math.max(0, current - padding);
-				top = Math.min(last, current + padding);
-				
-				//There is room to pad more, and we don't have pagingLimit buttons
-				while (top - bottom !== pagingLimit - 1 && (last > padding || bottom > 0)) {
+
+		var pageCount = 5; //Max index, 5 pages, the logic doesn't work for even numbers
+        //The buttons for paginiation
+        //Will be buttons for up to 5 pages, with a selected page
+        //Selected page will be in the middle, when possible
+        self.pageButtons = ko.computed(function() {
+            var current = toNumber(self.pageIndex()),
+                last = toNumber(self.lastPageIndex()),
+                top = last,
+                bottom = 0;
+            
+            if (current === 0) {
+                //Get current to either the last page, or pageCount from current
+                top = Math.min(pageCount - 1, last);
+            } else if (current === last) {
+                //Get from either the first page, or pageCount less than current, to current
+                bottom = Math.max(0, current - pageCount + 1);
+            } else {
+                //If it fits, we want pageCount buttons with current in the middle
+                //If it won't fit, we want the smaller of pageCount or the total number of pages
+                //Because we don't want the number of buttons to shrink in the latter case
+                var padding = Math.floor(pageCount / 2);
+                
+                bottom = Math.max(0, current - padding);
+                top = Math.min(last, current + padding);
+                
+                //There is room to pad more, and we don't have pageCount buttons
+                //Pagecount-1 because pagesa re 0 indexed
+                while (top - bottom < (pageCount - 1)
+						&& last > padding
+						&& (top < last || bottom > 0)) {
 					if (top < last)
 						top++;
 					else
 						bottom--;
+					if (bottom === 0)
+						break;
 				}
 			}
 
-			var pages =  range(bottom, top).map(function(n) {
-				return { name: n + 1, isActive: n === current };
-			});
+            var pages =  range(bottom, top).map(function(n) {
+                return { name: n + 1, isActive: n === current };
+            });
 
-			return pages;
-		});
+            return pages;
+        });
 
 		self.goToPage = function(page) {
 			self.pageIndex(parseInt(page.name, 10) - 1);
 		};
 	};
 
+
+	/*
+		This widget can only be bound on a <Table> element in the DOM
+		Overridding it's parts can only be done if the un-"processed" <Table> would have legal HTML structure
+		Otherwise it will not render correctly in IE
+	*/
 	return function GridWidget() {
 		var self = this;
 
